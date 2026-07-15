@@ -1,0 +1,227 @@
+name: Deploy Assets
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment Environment'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - 'templates/**'
+      - 'scripts/**'
+
+env:
+  TF_IN_AUTOMATION: "true"
+  AWS_DEFAULT_REGION: us-east-1
+
+jobs:
+  terraform-deploy:
+    name: Terraform Infrastructure
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: us-east-1
+          role-session-name: github-actions-terraform
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.0"
+
+      - name: Terraform Init
+        working-directory: ./terraform
+        run: terraform init -input=false -no-color
+
+      - name: Terraform Apply
+        working-directory: ./terraform
+        run: |
+          terraform apply -auto-approve -input=false -no-color \
+            -var="bucket_name=${{ secrets.BUCKET_NAME }}" \
+            -var="environment=${{ github.event.inputs.environment || vars.ENVIRONMENT || 'dev' }}" \
+            -var="project=${{ secrets.PROJECT }}" \
+            -var="cost_center=${{ secrets.COST_CENTER }}" \
+            -var="cloudfront_enabled=${{ vars.CLOUDFRONT_ENABLED || 'true' }}" \
+            -var="enable_kms_encryption=${{ vars.ENABLE_KMS_ENCRYPTION || 'false' }}" \
+            -var="kms_key_arn=${{ vars.KMS_KEY_ARN }}"
+
+      - name: Get Bucket Name from Terraform Output
+        id: get_bucket
+        working-directory: ./terraform
+        run: |
+          BUCKET=$(terraform output -raw bucket_name)
+          echo "bucket_name=$BUCKET" >> $GITHUB_OUTPUT
+
+  deploy-assets:
+    name: Deploy Assets to S3
+    runs-on: ubuntu-latest
+    needs: terraform-deploy
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: us-east-1
+          role-session-name: github-actions-deploy
+
+      - name: Set environment variables
+        run: |
+          echo "ENVIRONMENT=${{ github.event.inputs.environment || vars.ENVIRONMENT || 'dev' }}" >> $GITHUB_ENV
+          echo "DEPLOYMENT_ID=$(date +'%Y%m%d-%H%M%S')" >> $GITHUB_ENV
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq file
+
+      - name: Deploy All Assets (including test.txt)
+        env:
+          BUCKET_NAME: ${{ secrets.BUCKET_NAME }}
+        run: |
+          chmod +x scripts/deploy.sh
+          ./scripts/deploy.sh
+
+      - name: Upload Versioned Test Files
+        env:
+          BUCKET_NAME: ${{ secrets.BUCKET_NAME }}
+        run: |
+          echo "📝 Uploading versioned test files..."
+          
+          # Method 1: Upload your existing test.txt with versioning
+          for i in {1..3}; do
+            echo "Version $i - $(date)" > test_v${i}.txt
+            aws s3 cp test_v${i}.txt s3://$BUCKET_NAME/test_v${i}.txt \
+              --metadata version=$i,timestamp=$(date +%s),environment=$ENVIRONMENT
+            echo "✅ Uploaded test_v${i}.txt"
+          done
+
+          # Method 2: Upload the original test.txt from templates directory
+          if [ -f "templates/test.txt" ]; then
+            echo "📄 Uploading original test.txt from templates..."
+            aws s3 cp templates/test.txt s3://$BUCKET_NAME/test.txt \
+              --metadata source="templates",environment=$ENVIRONMENT
+            echo "✅ Uploaded test.txt from templates"
+          fi
+
+          # Method 3: Upload all .txt files from templates
+          echo "📂 Uploading all .txt files from templates..."
+          find templates -name "*.txt" -type f | while read file; do
+            filename=$(basename "$file")
+            aws s3 cp "$file" "s3://$BUCKET_NAME/$filename" \
+              --metadata source="templates",environment=$ENVIRONMENT
+            echo "✅ Uploaded $filename"
+          done
+
+      - name: Upload index.html
+        env:
+          BUCKET_NAME: ${{ secrets.BUCKET_NAME }}
+        run: |
+          if [ -f "templates/index.html" ]; then
+            # Replace variables in index.html
+            sed -e "s/\${ENVIRONMENT}/${ENVIRONMENT:-dev}/g" \
+                -e "s/\${DEPLOYMENT_ID}/${DEPLOYMENT_ID:-unknown}/g" \
+                -e "s/\${TIMESTAMP}/$(date -Iseconds)/g" \
+                templates/index.html > index_final.html
+            
+            aws s3 cp index_final.html s3://$BUCKET_NAME/index.html \
+              --content-type text/html \
+              --cache-control max-age=3600 \
+              --metadata environment=$ENVIRONMENT,deployment=$DEPLOYMENT_ID
+            echo "✅ Uploaded index.html"
+          fi
+
+      - name: Upload Other Static Assets
+        env:
+          BUCKET_NAME: ${{ secrets.BUCKET_NAME }}
+        run: |
+          echo "📦 Uploading other static assets..."
+          find templates -type f -not -name "*.html" -not -name "*.txt" | while read file; do
+            filename=$(basename "$file")
+            mime_type=$(file -b --mime-type "$file" 2>/dev/null || echo "application/octet-stream")
+            aws s3 cp "$file" "s3://$BUCKET_NAME/assets/$filename" \
+              --content-type "$mime_type" \
+              --cache-control max-age=86400
+            echo "✅ Uploaded $filename"
+          done
+
+      - name: Create Version Manifest
+        env:
+          BUCKET_NAME: ${{ secrets.BUCKET_NAME }}
+        run: |
+          echo "📋 Creating deployment manifest..."
+          cat > manifest.json << EOF
+          {
+            "deployment_id": "${DEPLOYMENT_ID}",
+            "environment": "${ENVIRONMENT}",
+            "timestamp": "$(date -Iseconds)",
+            "bucket": "${BUCKET_NAME}",
+            "github_run": "${GITHUB_RUN_ID}",
+            "files": $(aws s3 ls s3://$BUCKET_NAME/ --recursive | jq -R -s -c 'split("\n") | map(select(length>0))')
+          }
+          EOF
+          
+          aws s3 cp manifest.json s3://$BUCKET_NAME/manifest_${DEPLOYMENT_ID}.json \
+            --content-type application/json
+          echo "✅ Created manifest"
+
+      - name: List All Uploaded Files
+        env:
+          BUCKET_NAME: ${{ secrets.BUCKET_NAME }}
+        run: |
+          echo "📊 All files in bucket:"
+          aws s3 ls s3://$BUCKET_NAME/ --recursive --human-readable
+
+      - name: Verify Deployment
+        env:
+          BUCKET_NAME: ${{ secrets.BUCKET_NAME }}
+        run: |
+          echo "🔍 Verifying deployment..."
+          
+          # Check test files
+          for file in test.txt test_v1.txt test_v2.txt test_v3.txt index.html; do
+            if aws s3api head-object --bucket $BUCKET_NAME --key $file > /dev/null 2>&1; then
+              echo "✅ $file exists"
+              # Show metadata
+              echo "   Metadata:"
+              aws s3api head-object --bucket $BUCKET_NAME --key $file --query 'Metadata' --output table
+            else
+              echo "❌ $file missing"
+            fi
+          done
+
+      - name: Output Deployment Info
+        run: |
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "✅ DEPLOYMENT COMPLETE!"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "📦 Bucket: ${{ secrets.BUCKET_NAME }}"
+          echo "🌍 Environment: ${{ env.ENVIRONMENT }}"
+          echo "🆔 Deployment ID: ${{ env.DEPLOYMENT_ID }}"
+          echo "📄 Files uploaded: test.txt, test_v1.txt, test_v2.txt, test_v3.txt, index.html"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
