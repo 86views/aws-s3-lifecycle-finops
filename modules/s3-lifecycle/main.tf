@@ -33,7 +33,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "main" {
 
     transition {
       days          = 91
-      storage_class = "GLACIER"  # Changed from GLACIER_FLEXIBLE_RETRIEVAL
+      storage_class = "GLACIER" # Changed from GLACIER_FLEXIBLE_RETRIEVAL
     }
 
     transition {
