@@ -43,15 +43,21 @@ jobs:
           echo "Actor      : ${{ github.actor }}"
           echo "Event      : ${{ github.event_name }}"
 
-      - name: Sanity check secret length
-        run: echo "Secret length: ${#ROLE_ARN}"
+      - name: Sanity Check Secret
         env:
           ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
-
-      - name: Debug OIDC token claims
         run: |
-          JWT=$(curl -sSL -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sts.amazonaws.com" | jq -r '.value')
+          echo "Secret configured: ${ROLE_ARN:+YES}"
+
+      - name: Debug OIDC Token Claims
+        run: |
+          JWT=$(
+            curl -sSL \
+              -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+              "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sts.amazonaws.com" \
+            | jq -r '.value'
+          )
+
           echo "$JWT" | cut -d. -f2 | base64 -d 2>/dev/null | jq .
 
       - name: Configure AWS Credentials
@@ -97,16 +103,16 @@ jobs:
       - name: Export Outputs
         id: outputs
         run: |
-          echo "bucket_name=$(terraform output -raw bucket_name)" >> $GITHUB_OUTPUT
-          echo "cloudfront_distribution_id=$(terraform output -raw cloudfront_distribution_id)" >> $GITHUB_OUTPUT
+          echo "bucket_name=$(terraform output -raw bucket_name)" >> "$GITHUB_OUTPUT"
+          echo "cloudfront_distribution_id=$(terraform output -raw cloudfront_distribution_id)" >> "$GITHUB_OUTPUT"
 
       - name: Terraform Summary
         run: |
-          echo "## Terraform Complete" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Item | Value |" >> $GITHUB_STEP_SUMMARY
-          echo "|------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Bucket | $(terraform output -raw bucket_name) |" >> $GITHUB_STEP_SUMMARY
-          echo "| CloudFront | $(terraform output -raw cloudfront_distribution_id) |" >> $GITHUB_STEP_SUMMARY
-          echo "| Project | ${{ vars.PROJECT }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Environment | ${{ vars.ENVIRONMENT }} |" >> $GITHUB_STEP_SUMMARY
+          echo "## Terraform Complete" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Item | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Bucket | $(terraform output -raw bucket_name) |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| CloudFront | $(terraform output -raw cloudfront_distribution_id) |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Project | ${{ vars.PROJECT }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Environment | ${{ vars.ENVIRONMENT }} |" >> "$GITHUB_STEP_SUMMARY"
