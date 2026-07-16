@@ -23,15 +23,15 @@ env:
 jobs:
   terraform:
     runs-on: ubuntu-latest
-    
+
     defaults:
       run:
         shell: bash
-    
+
     outputs:
       bucket_name: ${{ steps.outputs.outputs.bucket_name }}
       distribution_id: ${{ steps.outputs.outputs.cloudfront_distribution_id }}
-    
+
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
