@@ -64,3 +64,5 @@ Edit module variables and lifecycle rules as needed. For production, add KMS enc
 - S3 Standard has generous free tier limits.
 - CloudFront has free tier data transfer.
 - Avoid high retrievals from Glacier.
+
+## You can download the repo for learning purposes
