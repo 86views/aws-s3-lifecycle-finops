@@ -15,3 +15,8 @@ output "project" {
   description = "Project name"
   value       = var.project
 }
+
+output "cost_center" {
+  description = "Cost center"
+  value       = var.cost_center
+}

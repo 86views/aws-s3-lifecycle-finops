@@ -2,7 +2,6 @@ name: Terraform Infrastructure
 
 on:
   workflow_dispatch:
-
   push:
     branches:
       - main
@@ -24,15 +23,15 @@ env:
 jobs:
   terraform:
     runs-on: ubuntu-latest
-
+    
     defaults:
       run:
         shell: bash
-
+    
     outputs:
       bucket_name: ${{ steps.outputs.outputs.bucket_name }}
       distribution_id: ${{ steps.outputs.outputs.cloudfront_distribution_id }}
-
+    
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -68,21 +67,21 @@ jobs:
       - name: Terraform Plan
         run: |
           terraform plan \
-          -var="bucket_name=${{ secrets.BUCKET_NAME }}" \
-          -var="environment=${{ vars.ENVIRONMENT }}" \
-          -var="project=${{ vars.PROJECT }}" \
-          -var="cost_center=${{ vars.COST_CENTER }}" \
-          -var="cloudfront_enabled=${{ vars.CLOUDFRONT_ENABLED }}"
+            -var="bucket_name=${{ secrets.BUCKET_NAME }}" \
+            -var="environment=${{ vars.ENVIRONMENT }}" \
+            -var="project=${{ vars.PROJECT }}" \
+            -var="cost_center=${{ vars.COST_CENTER }}" \
+            -var="cloudfront_enabled=${{ vars.CLOUDFRONT_ENABLED }}"
 
       - name: Terraform Apply
         if: github.ref == 'refs/heads/main'
         run: |
           terraform apply -auto-approve \
-          -var="bucket_name=${{ secrets.BUCKET_NAME }}" \
-          -var="environment=${{ vars.ENVIRONMENT }}" \
-          -var="project=${{ vars.PROJECT }}" \
-          -var="cost_center=${{ vars.COST_CENTER }}" \
-          -var="cloudfront_enabled=${{ vars.CLOUDFRONT_ENABLED }}"
+            -var="bucket_name=${{ secrets.BUCKET_NAME }}" \
+            -var="environment=${{ vars.ENVIRONMENT }}" \
+            -var="project=${{ vars.PROJECT }}" \
+            -var="cost_center=${{ vars.COST_CENTER }}" \
+            -var="cloudfront_enabled=${{ vars.CLOUDFRONT_ENABLED }}"
 
       - name: Export Outputs
         id: outputs
