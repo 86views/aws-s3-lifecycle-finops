@@ -60,6 +60,19 @@ resource "aws_iam_role_policy" "this" {
         ]
       },
       {
+        Sid    = "TerraformStateAccess"
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:ListBucket"
+        ]
+        Resource = [
+          "arn:aws:s3:::tf-state-7afc2a05",
+          "arn:aws:s3:::tf-state-7afc2a05/*"
+        ]
+      },
+      {
         Sid      = "CloudFrontInvalidation"
         Effect   = "Allow"
         Action   = ["cloudfront:CreateInvalidation", "cloudfront:GetDistribution"]
