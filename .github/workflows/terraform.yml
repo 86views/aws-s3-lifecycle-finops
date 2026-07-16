@@ -43,23 +43,6 @@ jobs:
           echo "Actor      : ${{ github.actor }}"
           echo "Event      : ${{ github.event_name }}"
 
-      - name: Sanity Check Secret
-        env:
-          ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
-        run: |
-          echo "Secret configured: ${ROLE_ARN:+YES}"
-
-      - name: Debug OIDC Token Claims
-        run: |
-          JWT=$(
-            curl -sSL \
-              -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-              "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sts.amazonaws.com" \
-            | jq -r '.value'
-          )
-
-          echo "$JWT" | cut -d. -f2 | base64 -d 2>/dev/null | jq .
-
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
