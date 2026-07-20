@@ -65,4 +65,4 @@ Edit module variables and lifecycle rules as needed. For production, add KMS enc
 - CloudFront has free tier data transfer.
 - Avoid high retrievals from Glacier.
 
-## You can download the repo for learning purposes and understanding aws, terraform
+## You can download the repo for learning purposes and understanding aws, terraform and devloped by Olueye Oluse
