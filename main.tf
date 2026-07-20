@@ -24,3 +24,5 @@ module "s3_lifecycle" {
   kms_key_arn           = var.kms_key_arn
 }
 
+
+# Test Terraform workflow
