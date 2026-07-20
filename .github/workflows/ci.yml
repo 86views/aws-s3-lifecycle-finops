@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Run Linting Checks
+        run: |
+          echo "Running linting checks..."
+          # Add your linting commands here
+          # Example: shellcheck, yamllint, etc.
+
+      - name: Validate File Structure
+        run: |
+          echo "Validating file structure..."
+          # Add your validation checks here
+
+      - name: Quick Health Check
+        run: |
+          echo "Performing quick health checks..."
+          # Add your health check commands here
