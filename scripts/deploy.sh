@@ -28,16 +28,19 @@ mkdir -p "$DEPLOY_DIR"
 # ========================
 if [ -f "templates/index.html" ]; then
   echo -e "${YELLOW}🌐 Processing index.html...${NC}"
-  sed -e "s/\${ENVIRONMENT}/${ENVIRONMENT:-dev}/g" \
-      -e "s/\${DEPLOYMENT_ID}/${DEPLOYMENT_ID:-unknown}/g" \
-      -e "s/\${TIMESTAMP}/$(date -Iseconds)/g" \
-      templates/index.html > "$DEPLOY_DIR/index.html"
+
+  sed \
+    -e "s|\${ENVIRONMENT}|${ENVIRONMENT:-dev}|g" \
+    -e "s|\${DEPLOYMENT_ID}|${DEPLOYMENT_ID:-unknown}|g" \
+    -e "s|\${TIMESTAMP}|$(date -Iseconds)|g" \
+    -e "s|\${GITHUB_SHA}|${GITHUB_SHA}|g" \
+    -e "s|\${GITHUB_ACTOR}|${GITHUB_ACTOR}|g" \
+    -e "s|\${GITHUB_REF_NAME}|${GITHUB_REF_NAME}|g" \
+    -e "s|\${GITHUB_REPOSITORY}|${GITHUB_REPOSITORY}|g" \
+    -e "s|\${BADGE_COLOR}|$( [ "${ENVIRONMENT}" = "prod" ] && echo "#10B981" || echo "#3B82F6" )|g" \
+    templates/index.html > "$DEPLOY_DIR/index.html"
+
   echo -e "${GREEN}✅ index.html prepared${NC}"
-else
-  echo -e "${YELLOW}⚠️  No index.html found, creating default...${NC}"
-  cat > "$DEPLOY_DIR/index.html" << 'EOF'
-<!DOCTYPE html><html><head><title>FinOps Project</title></head><body><h1>Welcome</h1></body></html>
-EOF
 fi
 
 # ========================
@@ -63,10 +66,12 @@ done
 echo -e "${YELLOW}📤 Uploading to S3...${NC}"
 
 # index.html
-aws s3 cp "$DEPLOY_DIR/index.html" "s3://$BUCKET_NAME/index.html" \
-  --content-type text/html \
-  --cache-control max-age=3600 \
-  --metadata "environment=${ENVIRONMENT},deployment=${DEPLOYMENT_ID}"
+if [ -f "$DEPLOY_DIR/index.html" ]; then
+  aws s3 cp "$DEPLOY_DIR/index.html" "s3://$BUCKET_NAME/index.html" \
+    --content-type text/html \
+    --cache-control max-age=3600 \
+    --metadata "environment=${ENVIRONMENT},deployment=${DEPLOYMENT_ID}"
+fi
 
 # test files
 aws s3 cp "$DEPLOY_DIR/test.txt" "s3://$BUCKET_NAME/test.txt" \

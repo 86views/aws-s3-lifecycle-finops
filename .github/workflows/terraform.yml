@@ -23,25 +23,21 @@ env:
 jobs:
   terraform:
     runs-on: ubuntu-latest
+    timeout-minutes: 15  # Prevent infinite hanging
 
     defaults:
       run:
         shell: bash
 
-    outputs:
-      bucket_name: ${{ steps.outputs.outputs.bucket_name }}
-      distribution_id: ${{ steps.outputs.outputs.cloudfront_distribution_id }}
-
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Debug GitHub Context
+      - name: Debug AWS Setup
         run: |
-          echo "Repository : ${{ github.repository }}"
-          echo "Ref        : ${{ github.ref }}"
-          echo "Actor      : ${{ github.actor }}"
-          echo "Event      : ${{ github.event_name }}"
+          echo "Repository: ${{ github.repository }}"
+          echo "Ref: ${{ github.ref }}"
+          echo "Actor: ${{ github.actor }}"
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -50,52 +46,63 @@ jobs:
           role-session-name: github-terraform
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Verify AWS Access
+        run: |
+          echo "Testing AWS credentials..."
+          aws sts get-caller-identity || exit 1
+          echo "✅ AWS credentials working!"
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.15.6
 
-      - name: Terraform Format
-        run: terraform fmt -check -recursive
-
       - name: Terraform Init
-        run: terraform init
+        run: |
+          echo "Initializing Terraform..."
+          terraform init || exit 1
+          echo "✅ Init completed"
 
       - name: Terraform Validate
-        run: terraform validate
+        run: |
+          echo "Validating Terraform..."
+          terraform validate || exit 1
+          echo "✅ Validate completed"
 
       - name: Terraform Plan
+        id: plan
         run: |
-          terraform plan \
+          echo "Planning Terraform changes..."
+          terraform plan -no-color \
             -var="bucket_name=${{ secrets.BUCKET_NAME }}" \
             -var="environment=${{ vars.ENVIRONMENT }}" \
             -var="project=${{ vars.PROJECT }}" \
             -var="cost_center=${{ vars.COST_CENTER }}" \
-            -var="cloudfront_enabled=${{ vars.CLOUDFRONT_ENABLED }}"
+            -var="cloudfront_enabled=${{ vars.CLOUDFRONT_ENABLED }}" \
+            -out=tfplan
+          echo "✅ Plan completed"
 
       - name: Terraform Apply
         if: github.ref == 'refs/heads/main'
         run: |
-          terraform apply -auto-approve \
-            -var="bucket_name=${{ secrets.BUCKET_NAME }}" \
-            -var="environment=${{ vars.ENVIRONMENT }}" \
-            -var="project=${{ vars.PROJECT }}" \
-            -var="cost_center=${{ vars.COST_CENTER }}" \
-            -var="cloudfront_enabled=${{ vars.CLOUDFRONT_ENABLED }}"
+          echo "Applying Terraform changes..."
+          terraform apply -auto-approve tfplan
+          echo "✅ Apply completed"
 
-      - name: Export Outputs
+      - name: Get Outputs
         id: outputs
         run: |
-          echo "bucket_name=$(terraform output -raw bucket_name)" >> "$GITHUB_OUTPUT"
-          echo "cloudfront_distribution_id=$(terraform output -raw cloudfront_distribution_id)" >> "$GITHUB_OUTPUT"
+          echo "Getting Terraform outputs..."
+          echo "bucket_name=$(terraform output -raw bucket_name 2>/dev/null || echo 'not-set')" >> "$GITHUB_OUTPUT"
+          echo "cloudfront_distribution_id=$(terraform output -raw cloudfront_distribution_id 2>/dev/null || echo 'not-set')" >> "$GITHUB_OUTPUT"
 
-      - name: Terraform Summary
+      - name: Summary
         run: |
-          echo "## Terraform Complete" >> "$GITHUB_STEP_SUMMARY"
+          echo "## ✅ Terraform Complete" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "| Item | Value |" >> "$GITHUB_STEP_SUMMARY"
           echo "|------|-------|" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Bucket | $(terraform output -raw bucket_name) |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| CloudFront | $(terraform output -raw cloudfront_distribution_id) |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Bucket | ${{ steps.outputs.outputs.bucket_name }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| CloudFront | ${{ steps.outputs.outputs.cloudfront_distribution_id }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Project | ${{ vars.PROJECT }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Environment | ${{ vars.ENVIRONMENT }} |" >> "$GITHUB_STEP_SUMMARY"

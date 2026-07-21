@@ -46,17 +46,25 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y jq
 
-      - name: Upload Website Files
+      - name: Deploy Website
+        env:
+          BUCKET_NAME: ${{ secrets.BUCKET_NAME }}
+          ENVIRONMENT: ${{ vars.ENVIRONMENT }}
+          DEPLOYMENT_ID: ${{ github.run_id }}
+          GITHUB_SHA: ${{ github.sha }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
-          aws s3 sync templates/ s3://${{ secrets.BUCKET_NAME }} \
-            --delete
+          chmod +x scripts/deploy.sh
+          ./scripts/deploy.sh
 
       - name: Get CloudFront Distribution ID
         id: distribution
         run: |
           DIST_ID=$(aws cloudfront list-distributions \
-          --query "DistributionList.Items[?Origins.Items[0].DomainName=='${{ secrets.BUCKET_NAME }}.s3.amazonaws.com'].Id" \
-          --output text)
+            --query "DistributionList.Items[?Origins.Items[0].DomainName=='${{ secrets.BUCKET_NAME }}.s3.amazonaws.com'].Id" \
+            --output text)
 
           echo "distribution=$DIST_ID" >> $GITHUB_OUTPUT
 
@@ -64,8 +72,8 @@ jobs:
         if: steps.distribution.outputs.distribution != ''
         run: |
           aws cloudfront create-invalidation \
-          --distribution-id ${{ steps.distribution.outputs.distribution }} \
-          --paths "/*"
+            --distribution-id ${{ steps.distribution.outputs.distribution }} \
+            --paths "/*"
 
       - name: Deployment Summary
         run: |
