@@ -8,7 +8,8 @@ module "github_iam" {
   github_repo_id  = var.github_repo_id
   project         = var.project
   environment     = var.environment
-  bucket_name     = var.bucket_name
+ 
+  bucket_name = module.s3_lifecycle.bucket_name
   cost_center     = var.cost_center
 }
 
@@ -17,7 +18,7 @@ module "github_iam" {
 module "s3_lifecycle" {
   source = "./modules/s3-lifecycle"
 
-  bucket_name           = var.bucket_name
+ 
   environment           = var.environment
   project               = var.project
   cost_center           = var.cost_center
