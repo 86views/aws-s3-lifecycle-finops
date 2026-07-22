@@ -1,5 +1,4 @@
 # Data sources required for dynamic naming
-data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
 
 resource "random_id" "suffix" {
