@@ -8,29 +8,53 @@ on:
   workflow_dispatch:
 
 permissions:
-  id-token: write
   contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   lint-and-test:
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Run Linting Checks
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.15.6
+
+      - name: Terraform Format Check
+        run: terraform fmt -check -recursive
+
+      - name: Terraform Init (no backend)
+        run: terraform init -backend=false
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      - name: Setup TFLint
+        uses: terraform-linters/setup-tflint@v4
+
+      - name: Run TFLint
         run: |
-          echo "Running linting checks..."
-          # Add your linting commands here
-          # Example: shellcheck, yamllint, etc.
+          tflint --init
+          tflint --recursive
+
+      - name: Run Checkov Security Scan
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: .
+          framework: terraform
+          quiet: true
+          soft_fail: true # set to false once you've triaged existing findings
 
       - name: Validate File Structure
         run: |
-          echo "Validating file structure..."
-          # Add your validation checks here
-
-      - name: Quick Health Check
-        run: |
-          echo "Performing quick health checks..."
-          # Add your health check commands here
+          echo "Checking required files exist..."
+          test -f variables.tf || { echo "Missing variables.tf"; exit 1; }
+          test -f outputs.tf || { echo "Missing outputs.tf"; exit 1; }
+          echo "✅ File structure OK"

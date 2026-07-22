@@ -7,8 +7,14 @@ output "cloudfront_distribution_id" {
 }
 
 
-output "github_role_arn" {
-  value = module.github_iam.role_arn
+output "github_plan_role_arn" {
+  description = "ARN of the read-only Terraform plan role"
+  value       = module.github_iam.plan_role_arn
+}
+
+output "github_apply_role_arn" {
+  description = "ARN of the Terraform apply role"
+  value       = module.github_iam.apply_role_arn
 }
 
 output "project" {

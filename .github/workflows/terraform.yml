@@ -11,6 +11,11 @@ on:
       - "*.tfvars"
       - "modules/**"
       - ".github/workflows/terraform.yml"
+  pull_request:
+    paths:
+      - "*.tf"
+      - "*.tfvars"
+      - "modules/**"
 
 permissions:
   id-token: write
@@ -20,10 +25,14 @@ env:
   AWS_REGION: us-east-1
   TF_IN_AUTOMATION: true
 
+concurrency:
+  group: terraform-main
+  cancel-in-progress: false
+
 jobs:
-  terraform:
+  plan:
     runs-on: ubuntu-latest
-    timeout-minutes: 15  # Prevent infinite hanging
+    timeout-minutes: 15
 
     defaults:
       run:
@@ -33,24 +42,15 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Debug AWS Setup
-        run: |
-          echo "Repository: ${{ github.repository }}"
-          echo "Ref: ${{ github.ref }}"
-          echo "Actor: ${{ github.actor }}"
-
-      - name: Configure AWS Credentials
+      - name: Configure AWS Credentials (plan role)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          role-session-name: github-terraform
+          role-to-assume: ${{ secrets.AWS_PLAN_ROLE_ARN }}
+          role-session-name: github-terraform-plan
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Verify AWS Access
-        run: |
-          echo "Testing AWS credentials..."
-          aws sts get-caller-identity || exit 1
-          echo "✅ AWS credentials working!"
+        run: aws sts get-caller-identity
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
@@ -58,41 +58,68 @@ jobs:
           terraform_version: 1.15.6
 
       - name: Terraform Init
-        run: |
-          echo "Initializing Terraform..."
-          terraform init || exit 1
-          echo "✅ Init completed"
+        run: terraform init
 
       - name: Terraform Validate
-        run: |
-          echo "Validating Terraform..."
-          terraform validate || exit 1
-          echo "✅ Validate completed"
+        run: terraform validate
 
       - name: Terraform Plan
         id: plan
-        run: |
-          echo "Planning Terraform changes..."
-          terraform plan -no-color \
-            -var="bucket_name=${{ secrets.BUCKET_NAME }}" \
-            -var="environment=${{ vars.ENVIRONMENT }}" \
-            -var="project=${{ vars.PROJECT }}" \
-            -var="cost_center=${{ vars.COST_CENTER }}" \
-            -var="cloudfront_enabled=${{ vars.CLOUDFRONT_ENABLED }}" \
-            -out=tfplan
-          echo "✅ Plan completed"
+        env:
+          TF_VAR_environment: ${{ vars.ENVIRONMENT }}
+          TF_VAR_project: ${{ vars.PROJECT }}
+          TF_VAR_cost_center: ${{ vars.COST_CENTER }}
+          TF_VAR_cloudfront_enabled: ${{ vars.CLOUDFRONT_ENABLED }}
+        run: terraform plan -no-color -out=tfplan
+
+      - name: Upload Plan Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan
+          path: tfplan
+          retention-days: 1
+
+  apply:
+    needs: plan
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production # requires a manual approval if you configure a reviewer on this GitHub Environment
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials (apply role)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_APPLY_ROLE_ARN }}
+          role-session-name: github-terraform-apply
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.15.6
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Download Plan Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: tfplan
 
       - name: Terraform Apply
-        if: github.ref == 'refs/heads/main'
-        run: |
-          echo "Applying Terraform changes..."
-          terraform apply -auto-approve tfplan
-          echo "✅ Apply completed"
+        run: terraform apply -auto-approve tfplan
 
       - name: Get Outputs
         id: outputs
         run: |
-          echo "Getting Terraform outputs..."
           echo "bucket_name=$(terraform output -raw bucket_name 2>/dev/null || echo 'not-set')" >> "$GITHUB_OUTPUT"
           echo "cloudfront_distribution_id=$(terraform output -raw cloudfront_distribution_id 2>/dev/null || echo 'not-set')" >> "$GITHUB_OUTPUT"
 

@@ -2,7 +2,6 @@ name: Deploy Static Website
 
 on:
   workflow_dispatch:
-
   push:
     branches:
       - main
@@ -19,9 +18,14 @@ permissions:
 env:
   AWS_REGION: us-east-1
 
+concurrency:
+  group: deploy-main
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    environment: production # same gate as terraform apply; requires reviewer if configured
 
     defaults:
       run:
@@ -34,7 +38,7 @@ jobs:
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          role-to-assume: ${{ secrets.AWS_APPLY_ROLE_ARN }}
           role-session-name: github-deploy
           aws-region: ${{ env.AWS_REGION }}
 
@@ -46,9 +50,23 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y jq
 
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.15.6
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Get Infra Outputs
+        id: tf
+        run: |
+          echo "bucket_name=$(terraform output -raw bucket_name)" >> "$GITHUB_OUTPUT"
+          echo "distribution_id=$(terraform output -raw cloudfront_distribution_id 2>/dev/null || echo '')" >> "$GITHUB_OUTPUT"
+
       - name: Deploy Website
         env:
-          BUCKET_NAME: ${{ secrets.BUCKET_NAME }}
+          BUCKET_NAME: ${{ steps.tf.outputs.bucket_name }}
           ENVIRONMENT: ${{ vars.ENVIRONMENT }}
           DEPLOYMENT_ID: ${{ github.run_id }}
           GITHUB_SHA: ${{ github.sha }}
@@ -59,29 +77,20 @@ jobs:
           chmod +x scripts/deploy.sh
           ./scripts/deploy.sh
 
-      - name: Get CloudFront Distribution ID
-        id: distribution
-        run: |
-          DIST_ID=$(aws cloudfront list-distributions \
-            --query "DistributionList.Items[?Origins.Items[0].DomainName=='${{ secrets.BUCKET_NAME }}.s3.amazonaws.com'].Id" \
-            --output text)
-
-          echo "distribution=$DIST_ID" >> $GITHUB_OUTPUT
-
       - name: Invalidate CloudFront Cache
-        if: steps.distribution.outputs.distribution != ''
+        if: steps.tf.outputs.distribution_id != ''
         run: |
           aws cloudfront create-invalidation \
-            --distribution-id ${{ steps.distribution.outputs.distribution }} \
+            --distribution-id "${{ steps.tf.outputs.distribution_id }}" \
             --paths "/*"
 
       - name: Deployment Summary
         run: |
-          echo "## Deployment Successful" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Item | Value |" >> $GITHUB_STEP_SUMMARY
-          echo "|------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Bucket | ${{ secrets.BUCKET_NAME }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Project | ${{ vars.PROJECT }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Environment | ${{ vars.ENVIRONMENT }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Region | ${{ env.AWS_REGION }} |" >> $GITHUB_STEP_SUMMARY
+          echo "## Deployment Successful" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Item | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Bucket | ${{ steps.tf.outputs.bucket_name }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Project | ${{ vars.PROJECT }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Environment | ${{ vars.ENVIRONMENT }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Region | ${{ env.AWS_REGION }} |" >> "$GITHUB_STEP_SUMMARY"

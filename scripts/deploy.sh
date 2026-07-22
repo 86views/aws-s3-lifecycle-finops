@@ -29,16 +29,21 @@ mkdir -p "$DEPLOY_DIR"
 if [ -f "templates/index.html" ]; then
   echo -e "${YELLOW}🌐 Processing index.html...${NC}"
 
-  sed \
-    -e "s|\${ENVIRONMENT}|${ENVIRONMENT:-dev}|g" \
-    -e "s|\${DEPLOYMENT_ID}|${DEPLOYMENT_ID:-unknown}|g" \
-    -e "s|\${TIMESTAMP}|$(date -Iseconds)|g" \
-    -e "s|\${GITHUB_SHA}|${GITHUB_SHA}|g" \
-    -e "s|\${GITHUB_ACTOR}|${GITHUB_ACTOR}|g" \
-    -e "s|\${GITHUB_REF_NAME}|${GITHUB_REF_NAME}|g" \
-    -e "s|\${GITHUB_REPOSITORY}|${GITHUB_REPOSITORY}|g" \
-    -e "s|\${BADGE_COLOR}|$( [ "${ENVIRONMENT}" = "prod" ] && echo "#10B981" || echo "#3B82F6" )|g" \
-    templates/index.html > "$DEPLOY_DIR/index.html"
+  # Case-insensitive environment check so "Prod", "PROD", "prod" all match
+  ENV_LOWER=$(echo "${ENVIRONMENT:-dev}" | tr '[:upper:]' '[:lower:]')
+  BADGE_COLOR=$( [ "$ENV_LOWER" = "prod" ] && echo "#10B981" || echo "#3B82F6" )
+
+ sed \
+  -e "s|\${ENVIRONMENT}|${ENVIRONMENT:-dev}|g" \
+  -e "s|\${DEPLOYMENT_ID}|${DEPLOYMENT_ID:-unknown}|g" \
+  -e "s|\${TIMESTAMP}|$(date -Iseconds)|g" \
+  -e "s|\${GITHUB_SHA}|${GITHUB_SHA:-unknown}|g" \
+  -e "s|\${GITHUB_ACTOR}|${GITHUB_ACTOR:-unknown}|g" \
+  -e "s|\${GITHUB_REF_NAME}|${GITHUB_REF_NAME:-unknown}|g" \
+  -e "s|\${GITHUB_REPOSITORY}|${GITHUB_REPOSITORY:-unknown}|g" \
+  -e "s|\${AWS_REGION}|${AWS_REGION:-unknown}|g" \
+  -e "s|\${BADGE_COLOR}|${BADGE_COLOR}|g" \
+  templates/index.html > "$DEPLOY_DIR/index.html"
 
   echo -e "${GREEN}✅ index.html prepared${NC}"
 fi
@@ -84,7 +89,9 @@ done
 
 # Other assets if any
 if [ -d "templates/assets" ]; then
-  aws s3 sync templates/assets/ "s3://$BUCKET_NAME/assets/" --cache-control max-age=86400
+  aws s3 sync templates/assets/ "s3://$BUCKET_NAME/assets/" \
+    --cache-control max-age=86400 \
+    --delete
 fi
 
 echo -e "${GREEN}✅ All files uploaded successfully${NC}"

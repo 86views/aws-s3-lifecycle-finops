@@ -1,17 +1,45 @@
-resource "aws_s3_bucket" "main" {
-  bucket = var.bucket_name
+# Data sources required for dynamic naming
+data "aws_caller_identity" "current" {}
+data "aws_region" "current" {}
 
-  tags = {
+resource "random_id" "suffix" {
+  byte_length = 4
+}
+
+locals {
+  # Result: finops-dashboard-dev-us-east-1-a1b2c3d4
+  bucket_name = lower("${var.project}-${var.environment}-${data.aws_region.current.region}-${random_id.suffix.hex}")
+
+  common_tags = {
     Environment = var.environment
     Project     = var.project
     CostCenter  = var.cost_center
+    ManagedBy   = "Terraform"
   }
+}
+
+# ------------------------------------------------------------------------------
+# S3 Bucket Configuration
+# ------------------------------------------------------------------------------
+
+resource "aws_s3_bucket" "main" {
+  bucket        = local.bucket_name
+  force_destroy = lower(var.environment) != "prod" # Protect prod from accidental deletion (case-insensitive)
+
+  tags = local.common_tags
 }
 
 resource "aws_s3_bucket_versioning" "main" {
   bucket = aws_s3_bucket.main.id
   versioning_configuration {
     status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_ownership_controls" "main" {
+  bucket = aws_s3_bucket.main.id
+  rule {
+    object_ownership = "BucketOwnerEnforced"
   }
 }
 
@@ -33,7 +61,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "main" {
 
     transition {
       days          = 91
-      storage_class = "GLACIER" # Changed from GLACIER_FLEXIBLE_RETRIEVAL
+      storage_class = "GLACIER"
     }
 
     transition {
@@ -55,7 +83,6 @@ resource "aws_s3_bucket_lifecycle_configuration" "main" {
     id     = "abort_incomplete_multipart"
     status = "Enabled"
 
-    # Added filter block with empty prefix
     filter {
       prefix = ""
     }
@@ -87,38 +114,41 @@ resource "aws_s3_bucket_public_access_block" "main" {
   restrict_public_buckets = true
 }
 
-# CloudFront with OAC
+# ------------------------------------------------------------------------------
+# CloudFront & Access Control (OAC)
+# ------------------------------------------------------------------------------
+
+resource "aws_cloudfront_origin_access_control" "main" {
+  count = var.cloudfront_enabled ? 1 : 0
+
+  name                              = "${local.bucket_name}-oac"
+  description                       = "OAC for ${local.bucket_name} S3 bucket"
+  origin_access_control_origin_type = "s3"
+  signing_behavior                  = "always"
+  signing_protocol                  = "sigv4"
+}
+
 resource "aws_cloudfront_distribution" "main" {
   count = var.cloudfront_enabled ? 1 : 0
 
   origin {
-    domain_name = aws_s3_bucket.main.bucket_regional_domain_name
-    origin_id   = "S3-${aws_s3_bucket.main.id}"
-
+    domain_name              = aws_s3_bucket.main.bucket_regional_domain_name
+    origin_id                = "S3-${aws_s3_bucket.main.id}"
     origin_access_control_id = aws_cloudfront_origin_access_control.main[0].id
   }
 
   enabled             = true
   is_ipv6_enabled     = true
-  default_root_object = "index.html" # Adjust as needed
+  default_root_object = "index.html"
 
-  default_cache_behavior {
-    allowed_methods  = ["GET", "HEAD"]
-    cached_methods   = ["GET", "HEAD"]
-    target_origin_id = "S3-${aws_s3_bucket.main.id}"
+ default_cache_behavior {
+  allowed_methods  = ["GET", "HEAD"]
+  cached_methods   = ["GET", "HEAD"]
+  target_origin_id = "S3-${aws_s3_bucket.main.id}"
 
-    forwarded_values {
-      query_string = false
-      cookies {
-        forward = "none"
-      }
-    }
-
-    viewer_protocol_policy = "redirect-to-https"
-    min_ttl                = 0
-    default_ttl            = 3600
-    max_ttl                = 86400
-  }
+  cache_policy_id        = "658327ea-f89d-4fab-a63d-7e88639e58f6"
+  viewer_protocol_policy = "redirect-to-https"
+}
 
   restrictions {
     geo_restriction {
@@ -130,24 +160,15 @@ resource "aws_cloudfront_distribution" "main" {
     cloudfront_default_certificate = true
   }
 
-  tags = {
-    Environment = var.environment
-    Project     = var.project
-    CostCenter  = var.cost_center
-  }
+  tags = local.common_tags
 }
 
-resource "aws_cloudfront_origin_access_control" "main" {
-  count = var.cloudfront_enabled ? 1 : 0
-
-  name                              = "${var.bucket_name}-oac"
-  description                       = "OAC for S3 bucket"
-  origin_access_control_origin_type = "s3"
-  signing_behavior                  = "always"
-  signing_protocol                  = "sigv4"
-}
+# ------------------------------------------------------------------------------
+# Bucket Policy (Only attaches when CloudFront is enabled)
+# ------------------------------------------------------------------------------
 
 resource "aws_s3_bucket_policy" "main" {
+  count  = var.cloudfront_enabled ? 1 : 0
   bucket = aws_s3_bucket.main.id
 
   policy = jsonencode({
