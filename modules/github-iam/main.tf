@@ -60,6 +60,17 @@ resource "aws_iam_role_policy" "plan" {
         ]
       },
       {
+        Sid    = "TerraformStateLockManagement"
+        Effect = "Allow"
+        Action = [
+          "s3:PutObject",
+          "s3:DeleteObject"
+        ]
+        Resource = [
+          "arn:aws:s3:::tf-state-7afc2a05/aws-s3-lifecycle-finops/terraform.tfstate.tflock"
+        ]
+      },
+      {
         Sid    = "S3ReadOnlyForRefresh"
         Effect = "Allow"
         Action = [
