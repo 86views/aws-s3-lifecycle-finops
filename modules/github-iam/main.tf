@@ -24,7 +24,7 @@ resource "aws_iam_role" "plan" {
             "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
           }
           StringLike = {
-            "token.actions.githubusercontent.com:sub" = "repo:${var.github_org}/${var.github_repo}:*"
+            "token.actions.githubusercontent.com:sub" = "repo:${var.github_org}@${var.github_owner_id}/${var.github_repo}@${var.github_repo_id}:*"
           }
         }
       }
@@ -112,7 +112,7 @@ resource "aws_iam_role" "apply" {
         Condition = {
           StringEquals = {
             "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
-            "token.actions.githubusercontent.com:sub" = "repo:${var.github_org}/${var.github_repo}:environment:production"
+            "token.actions.githubusercontent.com:sub" = "repo:${var.github_org}@${var.github_owner_id}/${var.github_repo}@${var.github_repo_id}:environment:production"
           }
         }
       }
@@ -127,7 +127,6 @@ resource "aws_iam_role" "apply" {
     Purpose     = "github-actions-apply"
   }
 }
-
 resource "aws_iam_role_policy" "apply" {
   name = "github-actions-s3-cloudfront-apply"
   role = aws_iam_role.apply.id

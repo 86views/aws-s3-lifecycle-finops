@@ -28,3 +28,13 @@ variable "cost_center" {
   type        = string
   default     = ""
 }
+
+variable "github_owner_id" {
+  description = "Immutable GitHub owner/org ID (from OIDC sub claim)"
+  type        = string
+}
+
+variable "github_repo_id" {
+  description = "Immutable GitHub repository ID (from OIDC sub claim)"
+  type        = string
+}

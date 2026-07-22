@@ -2,12 +2,14 @@
 module "github_iam" {
   source = "./modules/github-iam"
 
-  github_org  = var.github_org
-  github_repo = var.github_repo
-  project     = var.project
-  environment = var.environment
-  bucket_name = var.bucket_name
-  cost_center = var.cost_center
+  github_org      = var.github_org
+  github_repo     = var.github_repo
+  github_owner_id = var.github_owner_id
+  github_repo_id  = var.github_repo_id
+  project         = var.project
+  environment     = var.environment
+  bucket_name     = var.bucket_name
+  cost_center     = var.cost_center
 }
 
 
