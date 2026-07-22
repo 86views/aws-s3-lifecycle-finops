@@ -64,9 +64,3 @@ Edit module variables and lifecycle rules as needed. For production, add KMS enc
 - S3 Standard has generous free tier limits.
 - CloudFront has free tier data transfer.
 - Avoid high retrievals from Glacier.
-
-echo "" >> README.md
-echo "## CI Status" >> README.md
-echo "[![CI](https://github.com/$(git remote get-url origin | sed 's/.*github.com[:/]\(.*\)\.git/\1/')/actions/workflows/ci.yml/badge.svg)](https://github.com/$(git remote get-url origin | sed 's/.*github.com[:/]\(.*\)\.git/\1/')/actions/workflows/ci.yml)" >> README.md
-
-## You can download the repo for learning purposes and understanding aws, terraform and devloped by Olueye Oluseun
