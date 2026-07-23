@@ -64,6 +64,16 @@ jobs:
           echo "bucket_name=$(terraform output -raw bucket_name)" >> "$GITHUB_OUTPUT"
           echo "distribution_id=$(terraform output -raw cloudfront_distribution_id 2>/dev/null || echo '')" >> "$GITHUB_OUTPUT"
 
+      - name: Get GitHub Profile Name
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          FULL_NAME=$(curl -s \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            https://api.github.com/users/${{ github.actor }} | jq -r '.name')
+
+          echo "FULL_NAME=$FULL_NAME" >> "$GITHUB_ENV"
+
       - name: Deploy Website
         env:
           BUCKET_NAME: ${{ steps.tf.outputs.bucket_name }}
@@ -71,6 +81,7 @@ jobs:
           DEPLOYMENT_ID: ${{ github.run_id }}
           GITHUB_SHA: ${{ github.sha }}
           GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_FULL_NAME: ${{ env.FULL_NAME }}
           GITHUB_REF_NAME: ${{ github.ref_name }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
