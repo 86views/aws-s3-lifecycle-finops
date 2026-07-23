@@ -40,6 +40,7 @@ if [ -f "templates/index.html" ]; then
   -e "s|\${GITHUB_SHA}|${GITHUB_SHA:-unknown}|g" \
   -e "s|\${GITHUB_ACTOR}|${GITHUB_ACTOR:-unknown}|g" \
   -e "s|\${GITHUB_REF_NAME}|${GITHUB_REF_NAME:-unknown}|g" \
+  -e "s|\${GITHUB_FULL_NAME}|${GITHUB_FULL_NAME:-unknown}|g" \
   -e "s|\${GITHUB_REPOSITORY}|${GITHUB_REPOSITORY:-unknown}|g" \
   -e "s|\${AWS_REGION}|${AWS_REGION:-unknown}|g" \
   -e "s|\${BADGE_COLOR}|${BADGE_COLOR}|g" \
