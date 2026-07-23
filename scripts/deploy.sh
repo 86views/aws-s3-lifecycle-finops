@@ -36,7 +36,7 @@ if [ -f "templates/index.html" ]; then
  sed \
   -e "s|\${ENVIRONMENT}|${ENVIRONMENT:-dev}|g" \
   -e "s|\${DEPLOYMENT_ID}|${DEPLOYMENT_ID:-unknown}|g" \
-  -e "s|\${TIMESTAMP}|$(date -Iseconds)|g" \
+  -e "s|\${TIMESTAMP}|$(TZ='Africa/Lagos' date '+%Y-%m-%d %H:%M:%S %Z')|g" \
   -e "s|\${GITHUB_SHA}|${GITHUB_SHA:-unknown}|g" \
   -e "s|\${GITHUB_ACTOR}|${GITHUB_ACTOR:-unknown}|g" \
   -e "s|\${GITHUB_REF_NAME}|${GITHUB_REF_NAME:-unknown}|g" \
